@@ -184,6 +184,56 @@ describe('slugify', () => {
   it('strips accents', () => {
     expect(slugify('José García')).toBe('jose-garcia');
   });
+
+  // Precomposed Latin letters with a stroke/hook and Latin ligatures do not
+  // decompose under NFKD, so before the transliteration pass the alnum filter
+  // silently dropped them: "Đường Đông" → "uong-ong", "Łódź" → "odz",
+  // "Nguyễn Văn Đức" → "nguy-n-v-n-c". Names in Vietnamese / Polish /
+  // Nordic / German quietly collapsed onto near-empty slugs.
+  describe('transliterates precomposed Latin letters NFKD does not decompose', () => {
+    it('Vietnamese đ / Đ → d', () => {
+      expect(slugify('đường Đông')).toBe('duong-dong');
+      expect(slugify('Nguyễn Đức')).toBe('nguyen-duc');
+      expect(slugify('Đặng Thái Sơn')).toBe('dang-thai-son');
+    });
+
+    it('Polish ł / Ł → l', () => {
+      expect(slugify('Łódź')).toBe('lodz');
+      expect(slugify('Wojciech Małkowski')).toBe('wojciech-malkowski');
+    });
+
+    it('Nordic ø / Ø → o, æ / Æ → ae', () => {
+      expect(slugify('Ørsted')).toBe('orsted');
+      expect(slugify('Bjørn Ærø')).toBe('bjorn-aero');
+    });
+
+    it('Icelandic þ / Þ → th, ð / Ð → d', () => {
+      expect(slugify('Þorvaldsdóttir')).toBe('thorvaldsdottir');
+      expect(slugify('Eiður')).toBe('eidur');
+    });
+
+    it('French œ / Œ → oe', () => {
+      expect(slugify('Œuvre')).toBe('oeuvre');
+    });
+
+    it('German ß → ss', () => {
+      expect(slugify('Straße')).toBe('strasse');
+    });
+
+    // Distinct names in the affected scripts previously collapsed to the
+    // same near-empty slug and last-writer-wins overwrote each other on a
+    // fallback_slugify write path. Every slug here must now be unique.
+    it('distinct Vietnamese/Polish/Icelandic names no longer collide', () => {
+      const slugs = [
+        slugify('Nguyễn Đức'),
+        slugify('Đặng Thái Sơn'),
+        slugify('Łódź'),
+        slugify('Þorvaldsdóttir'),
+      ];
+      expect(new Set(slugs).size).toBe(slugs.length);
+      for (const s of slugs) expect(s).not.toBe('');
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

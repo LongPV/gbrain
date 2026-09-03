@@ -461,6 +461,19 @@ export function slugify(raw: string): string {
     // strip them before replacing the rest with hyphens so "è" → "e",
     // not "e" + "-".
     .replace(/[̀-ͯ]/g, '')
+    // Precomposed Latin letters with a stroke/hook and Latin ligatures do
+    // NOT decompose under NFKD (they are their own base characters), so the
+    // alnum filter below would drop them — "Đường" → "uong", "Łódź" → "odz".
+    // Transliterate the common set so Vietnamese / Polish / Nordic / German
+    // names produce readable slugs. `.toLowerCase()` above has already
+    // folded Đ→đ, Ł→ł, Ø→ø, Ð→ð, Þ→þ, Æ→æ, Œ→œ, ẞ→ß.
+    .replace(/đ|ð/g, 'd')
+    .replace(/ł/g, 'l')
+    .replace(/ø/g, 'o')
+    .replace(/þ/g, 'th')
+    .replace(/æ/g, 'ae')
+    .replace(/œ/g, 'oe')
+    .replace(/ß/g, 'ss')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
