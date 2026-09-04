@@ -448,8 +448,36 @@ async function tryFuzzyMatch(
 }
 
 /**
- * Deterministic slugify: lowercase, replace non-alphanumerics with hyphens,
- * collapse repeated hyphens, trim leading/trailing hyphens.
+ * Latin letters whose diacritic is drawn INSIDE the glyph — a stroke, bar, or
+ * ligature rather than a floating accent. Unicode assigns them no
+ * decomposition mapping, so the NFKD pass below leaves them untouched and the
+ * `[^a-z0-9]+` sweep then DELETES them instead of folding them to a base
+ * letter. Vietnamese is the common case: "Đăng Example" slugged to
+ * "ang-example" — the leading d vanished, and every fact written under that
+ * name landed on an entity slug no lookup by name could reach.
+ *
+ * Keys are lowercase: slugify() lowercases before it consults this table.
+ */
+const NON_DECOMPOSING_LATIN: Record<string, string> = {
+  đ: 'd', // U+0111 Vietnamese, Croatian, Sami
+  ð: 'd', // U+00F0 Icelandic eth
+  ø: 'o', // U+00F8 Danish, Norwegian, Faroese
+  ł: 'l', // U+0142 Polish
+  ħ: 'h', // U+0127 Maltese
+  ŧ: 't', // U+0167 Northern Sami
+  ı: 'i', // U+0131 Turkish dotless i
+  ß: 'ss', // U+00DF German sharp s
+  æ: 'ae', // U+00E6 Danish, Norwegian, Icelandic
+  œ: 'oe', // U+0153 French
+  þ: 'th', // U+00FE Icelandic thorn
+};
+
+const NON_DECOMPOSING_RE = new RegExp(`[${Object.keys(NON_DECOMPOSING_LATIN).join('')}]`, 'g');
+
+/**
+ * Deterministic slugify: lowercase, fold accents and stroke letters to their
+ * base letter, replace non-alphanumerics with hyphens, collapse repeated
+ * hyphens, trim leading/trailing hyphens.
  *
  * Exported for tests + callers who want the same fallback shape independently.
  */
@@ -461,6 +489,9 @@ export function slugify(raw: string): string {
     // strip them before replacing the rest with hyphens so "è" → "e",
     // not "e" + "-".
     .replace(/[̀-ͯ]/g, '')
+    // Runs AFTER the mark strip so composed forms reduce in one pass:
+    // "ǿ" → NFKD → "ø" + U+0301 → mark stripped → "ø" → "o".
+    .replace(NON_DECOMPOSING_RE, ch => NON_DECOMPOSING_LATIN[ch])
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
